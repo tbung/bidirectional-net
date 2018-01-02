@@ -69,11 +69,21 @@ def residual(x, in_channels, out_channels, params, buffers, training, stride=1,
     return out
 
 
+class InverseRevBlockFunction(Function):
+    @staticmethod
+    def forward():
+        pass
+
+    @staticmethod
+    def backward():
+        pass
+
+
 class RevBlockFunction(Function):
     @staticmethod
-    def _inner(x, in_channels, out_channels, training, stride,
-               f_params, f_buffs, g_params, g_buffs, manual_grads=True,
-               no_activation=False):
+    def _forward(x, in_channels, out_channels, training, stride,
+                 f_params, f_buffs, g_params, g_buffs, manual_grads=True,
+                 no_activation=False):
 
         x1, x2 = torch.chunk(x, 2, dim=1)
 
@@ -106,8 +116,8 @@ class RevBlockFunction(Function):
         return y
 
     @staticmethod
-    def _inner_backward(output, in_channels, out_channels, f_params, f_buffs,
-                        g_params, g_buffs, training, no_activation):
+    def _backward(output, in_channels, out_channels, f_params, f_buffs,
+                  g_params, g_buffs, training, no_activation):
 
         y1, y2 = torch.chunk(output, 2, dim=1)
         y1 = Variable(y1, volatile=True).contiguous()
@@ -123,9 +133,9 @@ class RevBlockFunction(Function):
         return x
 
     @staticmethod
-    def _inner_grad(x, dy, in_channels, out_channels, training, stride,
-                    activations, f_params, f_buffs, g_params, g_buffs,
-                    no_activation=False):
+    def _gradient(x, dy, in_channels, out_channels, training, stride,
+                  activations, f_params, f_buffs, g_params, g_buffs,
+                  no_activation=False):
         dy1, dy2 = Variable.chunk(dy, 2, dim=1)
 
         x1, x2 = torch.chunk(x, 2, dim=1)
@@ -190,8 +200,8 @@ class RevBlockFunction(Function):
         if CUDA:
             for var in f_params:
                 var.cuda()
-            for var in g_params:
-                var.cuda()
+                for var in g_params:
+                    var.cuda()
 
         # if stride > 1 information is lost and we need to save the input
         if stride > 1 or no_activation:
@@ -211,7 +221,7 @@ class RevBlockFunction(Function):
         ctx.in_channels = in_channels
         ctx.out_channels = out_channels
 
-        y = RevBlockFunction._inner(
+        y = RevBlockFunction._forward(
             x,
             in_channels,
             out_channels,
@@ -243,7 +253,7 @@ class RevBlockFunction(Function):
             x = ctx.activations.pop()
         else:
             output = ctx.activations.pop()
-            x = RevBlockFunction._inner_backward(
+            x = RevBlockFunction._backward(
                 output,
                 in_channels,
                 out_channels,
@@ -253,7 +263,7 @@ class RevBlockFunction(Function):
                 ctx.no_activation
             )
 
-        dx, dfw, dgw = RevBlockFunction._inner_grad(
+        dx, dfw, dgw = RevBlockFunction._gradient(
             x,
             grad_out,
             in_channels,
@@ -370,8 +380,8 @@ class RevBlock(nn.Module):
         if not no_activation:
             self.register_buffer('f_rm1', torch.zeros(self.in_channels))
             self.register_buffer('f_rv1', torch.ones(self.in_channels))
-        self.register_buffer('f_rm2', torch.zeros(self.out_channels))
-        self.register_buffer('f_rv2', torch.ones(self.out_channels))
+            self.register_buffer('f_rm2', torch.zeros(self.out_channels))
+            self.register_buffer('f_rv2', torch.ones(self.out_channels))
 
         self.register_buffer('g_rm1', torch.zeros(self.out_channels))
         self.register_buffer('g_rv1', torch.ones(self.out_channels))
@@ -387,12 +397,12 @@ class RevBlock(nn.Module):
         if not self.no_activation:
             self._parameters['f_bw1'].data.uniform_()
             self._parameters['f_bb1'].data.zero_()
-        self._parameters['f_w1'].data.uniform_(-f_stdv, f_stdv)
-        self._parameters['f_b1'].data.uniform_(-f_stdv, f_stdv)
-        self._parameters['f_w2'].data.uniform_(-g_stdv, g_stdv)
-        self._parameters['f_b2'].data.uniform_(-g_stdv, g_stdv)
-        self._parameters['f_bw2'].data.uniform_()
-        self._parameters['f_bb2'].data.zero_()
+            self._parameters['f_w1'].data.uniform_(-f_stdv, f_stdv)
+            self._parameters['f_b1'].data.uniform_(-f_stdv, f_stdv)
+            self._parameters['f_w2'].data.uniform_(-g_stdv, g_stdv)
+            self._parameters['f_b2'].data.uniform_(-g_stdv, g_stdv)
+            self._parameters['f_bw2'].data.uniform_()
+            self._parameters['f_bb2'].data.zero_()
 
         self._parameters['g_w1'].data.uniform_(-g_stdv, g_stdv)
         self._parameters['g_b1'].data.uniform_(-g_stdv, g_stdv)
@@ -406,8 +416,8 @@ class RevBlock(nn.Module):
         if not self.no_activation:
             self._buffers['f_rm1'].zero_()
             self._buffers['f_rv1'].fill_(1)
-        self.f_rm2.zero_()
-        self.f_rv2.fill_(1)
+            self.f_rm2.zero_()
+            self.f_rv2.fill_(1)
 
         self.g_rm1.zero_()
         self.g_rv1.fill_(1)
@@ -445,18 +455,18 @@ class RevNet(nn.Module):
         ----------
 
         units: list-like
-            Number of residual units in each group
+        Number of residual units in each group
 
         filters: list-like
-            Number of filters in each unit including the inputlayer, so it is
-            one item longer than units
+        Number of filters in each unit including the inputlayer, so it is
+        one item longer than units
 
         strides: list-like
-            Strides to use for the first units in each group, same length as
-            units
+        Strides to use for the first units in each group, same length as
+        units
 
         bottleneck: boolean
-            Wether to use the bottleneck residual or the basic residual
+        Wether to use the bottleneck residual or the basic residual
         """
         super(RevNet, self).__init__()
         self.name = self.__class__.__name__
