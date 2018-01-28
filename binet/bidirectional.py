@@ -19,62 +19,63 @@ class InverseRevBlockFunction(Function):
 
         x1, x2 = torch.chunk(x, 2, dim=1)
 
-        x1 = Variable(x1, requires_grad=True).contiguous()
-        x2 = Variable(x2, requires_grad=True).contiguous()
+        with torch.enable_grad():
+            x1 = Variable(x1, requires_grad=True).contiguous()
+            x2 = Variable(x2, requires_grad=True).contiguous()
 
-        if CUDA:
-            x1.cuda()
-            x2.cuda()
+            if CUDA:
+                x1.cuda()
+                x2.cuda()
 
-        x1_ = revnet.possible_downsample(x1, in_channels, out_channels, stride)
-        x2_ = revnet.possible_downsample(x2, in_channels, out_channels, stride)
+            x1_ = revnet.possible_downsample(x1, in_channels, out_channels, stride)
+            x2_ = revnet.possible_downsample(x2, in_channels, out_channels, stride)
 
-        g_x1 = RevBlockFunction.residual(
-            x1,
-            out_channels,
-            out_channels,
-            g_params,
-            g_buffs,
-            training=training
-        )
+            g_x1 = RevBlockFunction.residual(
+                x1,
+                out_channels,
+                out_channels,
+                g_params,
+                g_buffs,
+                training=training
+            )
 
-        y2_ = x2_ - g_x1
+            y2_ = x2_ - g_x1
 
-        f_y2 = RevBlockFunction.residual(
-            y2_,
-            in_channels,
-            out_channels,
-            f_params,
-            f_buffs,
-            training=training,
-            stride=stride,
-            no_activation=no_activation
-        )
+            f_y2 = RevBlockFunction.residual(
+                y2_,
+                in_channels,
+                out_channels,
+                f_params,
+                f_buffs,
+                training=training,
+                stride=stride,
+                no_activation=no_activation
+            )
 
-        y1_ = x1_ - f_y2
+            y1_ = x1_ - f_y2
 
-        dd1 = torch.autograd.grad(y1_, (y2_,) + tuple(f_params), dy1,
-                                  retain_graph=True)
-        dy1_y2 = dd1[0]
-        dfw = dd1[1:]
-        dy2_plus = -dy1_y2 + dy2
-        dd2 = torch.autograd.grad(y2_, (x1, x2) + tuple(g_params), dy2_plus,
-                                  retain_graph=True)
-        dgw = dd2[2:]
+            dd1 = torch.autograd.grad(y1_, (y2_,) + tuple(f_params), dy1,
+                                      retain_graph=True)
+            dy1_y2 = dd1[0]
+            dfw = dd1[1:]
+            dy2_plus = -dy1_y2 + dy2
+            dd2 = torch.autograd.grad(y2_, (x1, x2) + tuple(g_params), dy2_plus,
+                                      retain_graph=True)
+            dgw = dd2[2:]
 
-        dx2 = dd2[1]
-        dx1 = dd2[0]
-        dx1 += torch.autograd.grad(x1_, x1, dy1, retain_graph=True)[0]
+            dx2 = dd2[1]
+            dx1 = dd2[0]
+            dx1 += torch.autograd.grad(x1_, x1, dy1, retain_graph=True)[0]
 
-        for hook in storage_hooks:
-            x = hook(x)
+            for hook in storage_hooks:
+                x = hook(x)
 
-        activations.append(x)
+            activations.append(x)
 
-        y1_.detach_()
-        y2_.detach_()
-        del y1_, y2_
-        dx = torch.cat((dx1, dx2), 1)
+            y1_.detach_()
+            y2_.detach_()
+            del y1_, y2_
+            dx = torch.cat((dx1, dx2), 1)
 
         return dx, dfw, dgw
 
