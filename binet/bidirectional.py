@@ -145,6 +145,8 @@ class InverseRevBlockFunction(Function):
             f_params, f_buffs,
             g_params, g_buffs,
             training,
+            padding=1,
+            dilation=1,
             no_activation=no_activation
         )
 
@@ -158,13 +160,13 @@ class InverseRevBlockFunction(Function):
 
     @staticmethod
     def backward(ctx, grad_out):
-        saved_variables = list(ctx.saved_variables)
+        saved_tensors = list(ctx.saved_tensors)
         if not ctx.no_activation:
-            f_params = saved_variables[:8]
-            g_params = saved_variables[8:16]
-        else:
-            f_params = saved_variables[:6]
-            g_params = saved_variables[6:14]
+            f_params = [Variable(p, requires_grad=True) for p in saved_tensors[:8]]
+            g_params = [Variable(p, requires_grad=True) for p in saved_tensors[8:16]]
+        else: 
+            f_params = [Variable(p, requires_grad=True) for p in saved_tensors[:6]]
+            g_params = [Variable(p, requires_grad=True) for p in saved_tensors[6:14]]
 
         in_channels = ctx.in_channels
         out_channels = ctx.out_channels
@@ -182,6 +184,7 @@ class InverseRevBlockFunction(Function):
                 out_channels,
                 ctx.training,
                 ctx.stride,
+                1, 1,
                 f_params, ctx.f_buffs,
                 g_params, ctx.g_buffs,
                 ctx.no_activation
