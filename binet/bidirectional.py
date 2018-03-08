@@ -7,6 +7,8 @@ from torch.autograd import Function, Variable
 import revnet
 from revnet import RevBlockFunction
 
+from torchviz import make_dot
+
 CUDA = torch.cuda.is_available()
 
 
@@ -20,8 +22,10 @@ class InverseRevBlockFunction(Function):
         x1, x2 = torch.chunk(x, 2, dim=1)
 
         with torch.enable_grad():
-            x1 = Variable(x1, requires_grad=True).contiguous()
-            x2 = Variable(x2, requires_grad=True).contiguous()
+            x1 = Variable(x1.contiguous(), requires_grad=True)
+            x2 = Variable(x2.contiguous(), requires_grad=True)
+            x1.retain_grad()
+            x2.retain_grad()
 
             if CUDA:
                 x1.cuda()
@@ -58,7 +62,7 @@ class InverseRevBlockFunction(Function):
                                       retain_graph=True)
             dy1_y2 = dd1[0]
             dfw = dd1[1:]
-            dy2_plus = -dy1_y2 + dy2
+            dy2_plus = dy1_y2 + dy2
             dd2 = torch.autograd.grad(y2_, (x1, x2) + tuple(g_params), dy2_plus,
                                       retain_graph=True)
             dgw = dd2[2:]
